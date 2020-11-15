@@ -12,6 +12,7 @@ RUN yum update -y && yum install -y tar gzip && yum clean all
 
 ENV kibana_version='7.9.3'
 ENV tarball='kibana-'${kibana_version}'-linux-x86_64.tar.gz'
+ENV license='Apache 2.0'
 
 
 RUN cd /opt && curl --retry 8 -s -L -O https://artifacts.elastic.co/downloads/kibana/${tarball} && cd -
