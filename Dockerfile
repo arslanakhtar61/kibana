@@ -4,6 +4,7 @@ ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
 ARG KIBANA_VERSION=7.9.3
+ARG NODEJS_VERSION=v10.22.1
 
 ###############################################################################
 #                                INSTALLATION
@@ -72,18 +73,18 @@ RUN mkdir ${KIBANA_HOME} \
 # RUN sed -i -e 's#^KIBANA_HOME=$#KIBANA_HOME='$KIBANA_HOME'#' /etc/init.d/kibana \
 #  && chmod +x /etc/init.d/kibana
 
-### NodeJS version 10.19.0 is required for Kibana version 7.7.0.  Delete node distribution included with kibana and replace with manually installed version
+### NodeJS version 10.22.1 is required for Kibana version 7.9.3.  Delete node distribution included with kibana and replace with manually installed version
 RUN set -x \
   && if [ "${TARGETPLATFORM}" = "linux/arm/v7" ] ; then rm -rf /opt/kibana/node \
-  && curl -O https://nodejs.org/dist/v10.19.0/node-v10.19.0-linux-armv6l.tar.gz \
-  && tar -xvf node-v10.19.0-linux-armv6l.tar.gz \
-  && mv node-v10.19.0-linux-armv6l /opt/kibana/node ; fi
+  && curl -O https://nodejs.org/dist/${NODEJS_VERSION}/node-${NODEJS_VERSION}-linux-armv6l.tar.gz \
+  && tar -xvf node-${NODEJS_VERSION}-linux-armv6l.tar.gz \
+  && mv node-${NODEJS_VERSION}-linux-armv6l /opt/kibana/node ; fi
 
   RUN set -x \
   && if [ "${TARGETPLATFORM}" = "linux/arm64" ] ; then rm -rf /opt/kibana/node \
-  && curl -O https://nodejs.org/dist/v10.19.0/node-v10.19.0-linux-arm64.tar.gz \
-  && tar -xvf node-v10.19.0-linux-arm64.tar.gz \
-  && mv node-v10.19.0-linux-arm64 /opt/kibana/node ; fi
+  && curl -O https://nodejs.org/dist/${NODEJS_VERSION}/node-${NODEJS_VERSION}-linux-arm64.tar.gz \
+  && tar -xvf node-${NODEJS_VERSION}-linux-arm64.tar.gz \
+  && mv node-${NODEJS_VERSION}-linux-arm64 /opt/kibana/node ; fi
 
 
 #RUN set -x \
