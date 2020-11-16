@@ -15,7 +15,7 @@ RUN mkdir /usr/share/kibana
 WORKDIR /usr/share/kibana
 
 ARG kibana_version=7.9.3
-ENV tarball='kibana-oss-${kibana_version}-linux-x86_64.tar.gz'
+ENV tarball='kibana-oss-'${kibana_version}'-linux-x86_64.tar.gz'
 ENV license='Apache 2.0'
 ARG NODEJS_VERSION=v10.22.1
 
