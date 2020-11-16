@@ -22,7 +22,8 @@ jobs:
         id: prepare
         run: |
           DOCKER_IMAGE=arslanakhtar61/kibana
-          DOCKER_PLATFORMS=linux/amd64,linux/arm/v7,linux/arm64/v8,linux/386
+          # DOCKER_PLATFORMS=linux/amd64,linux/arm/v7,linux/arm64/v8,linux/386
+          DOCKER_PLATFORMS=linux/amd64,linux/arm64/v8
           VERSION=7.9.3
 
           if [[ $GITHUB_REF == refs/tags/* ]]; then
