@@ -1,121 +1,79 @@
-FROM ubuntu:18.04
+#
+# ** THIS IS AN AUTO-GENERATED FILE **
+#
 
-ARG TARGETPLATFORM
-ARG BUILDPLATFORM
+################################################################################
+# Build stage 0
+# Extract Kibana and make various file manipulations.
+################################################################################
+FROM centos:7 AS prep_files
 
-ARG KIBANA_VERSION=7.9.3
+# Install toolchain to build dumb-init
+RUN yum install -y glibc-static gcc make
+
+RUN mkdir /usr/share/kibana
+WORKDIR /usr/share/kibana
+
+ENV kibana_version=7.9.3
+ENV tarball='kibana-oss-${kibana_version}-linux-x86_64.tar.gz'
+ENV license='Apache 2.0'
 ARG NODEJS_VERSION=v10.22.1
 
-###############################################################################
-#                                INSTALLATION
-###############################################################################
 
-### install prerequisites
+RUN curl -sL https://artifacts.elastic.co/downloads/kibana/${tarball} | tar --strip-components=1 -zxf -
+# replace amd64 node with arm64
+RUN rm -rf /usr/share/kibana/node/* && \
+    curl -sL https://nodejs.org/dist/${NODEJS_VERSION}/node-${NODEJS_VERSION}-linux-arm64.tar.gz | tar -C /usr/share/kibana/node/ --strip-components=1 -xzf -
 
+# compile dumb-init from sources
+RUN mkdir -p /opt/dumb-init
+RUN curl -sL https://github.com/Yelp/dumb-init/archive/v1.2.2.tar.gz | tar -C /opt/dumb-init --strip-components=1 -zxf -
+RUN pushd /opt/dumb-init && make && popd
 
-# RUN set -x \
-RUN set -e \
- && apt update -y \
- && apt install -y --no-install-recommends ca-certificates \ 
- && apt install -y --no-install-recommends curl \
- && apt install -y --no-install-recommends gosu \
- && apt install -y --no-install-recommends wget \
- && apt install -y --no-install-recommends libkrb5-dev \
- && apt install -y --no-install-recommends git \
- && apt install -y --no-install-recommends libfontconfig
- 
- RUN set -e \
- && apt install -y --no-install-recommends python \
- && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends krb5-config \
- && apt install -y --no-install-recommends libssl-dev
+# Ensure that group permissions are the same as user permissions.
+# This will help when relying on GID-0 to run Kibana, rather than UID-1000.
+# OpenShift does this, for example.
+# REF: https://docs.openshift.org/latest/creating_images/guidelines.html
+RUN chmod -R g=u /usr/share/kibana
+RUN find /usr/share/kibana -type d -exec chmod g+s {} \;
 
- RUN set -e \
- && apt install -y --no-install-recommends libsasl2-dev \
- && apt install -y --no-install-recommends libsasl2-modules-gssapi-mit \
- && apt install -y --no-install-recommends gcc
+################################################################################
+# Build stage 1
+# Copy prepared files from the previous stage and complete the image.
+################################################################################
+FROM centos:7
+EXPOSE 5601
 
- RUN set -e \
- && apt install -y --no-install-recommends libc-dev \
- && apt install -y --no-install-recommends make \
- && apt install -y --no-install-recommends g++ \
- && apt install -y --no-install-recommends build-essential
+# Add Reporting dependencies.
+RUN yum update -y && yum install -y fontconfig freetype shadow-utils && yum clean all
 
- RUN set -e \
- && apt clean \
- && rm -rf /var/lib/apt/lists/*
-#  && gosu nobody true
-#  && set +x
+# Bring in Kibana from the initial stage.
+COPY --from=prep_files --chown=1000:0 /usr/share/kibana /usr/share/kibana
+# Bring in dumb-init from the initial stage.
+COPY --from=prep_files --chown=1000:0 /opt/dumb-init/dumb-init  /usr/local/bin/dumb-init
 
- ### install Kibana
+WORKDIR /usr/share/kibana
+RUN ln -s /usr/share/kibana /opt/kibana
 
-ENV \
- KIBANA_HOME=/opt/kibana \
- KIBANA_PACKAGE=kibana-${KIBANA_VERSION}-linux-x86_64.tar.gz \
- KIBANA_GID=993 \
- KIBANA_UID=993
+ENV ELASTIC_CONTAINER true
+ENV PATH=/usr/share/kibana/bin:$PATH
 
-RUN mkdir ${KIBANA_HOME} \
- && curl -O https://artifacts.elastic.co/downloads/kibana/${KIBANA_PACKAGE} \
- && tar xzf ${KIBANA_PACKAGE} -C ${KIBANA_HOME} --strip-components=1 \
- && rm -f ${KIBANA_PACKAGE} \
- && groupadd -r kibana -g ${KIBANA_GID} \
- && useradd -r -s /usr/sbin/nologin -d ${KIBANA_HOME} -c "Kibana service user" -u ${KIBANA_UID} -g kibana kibana \
- && mkdir -p /var/log/kibana \
- && chown -R kibana:kibana ${KIBANA_HOME} /var/log/kibana
+# Set some Kibana configuration defaults.
+COPY --chown=1000:0 config/kibana.yml /usr/share/kibana/config/kibana.yml
 
- ###############################################################################
-#                              START-UP SCRIPTS
-###############################################################################
+# Add the launcher/wrapper script. It knows how to interpret environment
+# variables and translate them to Kibana CLI options.
+COPY --chown=1000:0 bin/kibana-docker /usr/local/bin/
 
-### Kibana
+# Ensure gid 0 write permissions for OpenShift.
+RUN chmod g+ws /usr/share/kibana && find /usr/share/kibana -gid 0 -and -not -perm /g+w -exec chmod g+w {} \;
 
-# ADD ./kibana-init /etc/init.d/kibana
-# RUN sed -i -e 's#^KIBANA_HOME=$#KIBANA_HOME='$KIBANA_HOME'#' /etc/init.d/kibana \
-#  && chmod +x /etc/init.d/kibana
+# Provide a non-root user to run the process.
+RUN groupadd --gid 1000 kibana && useradd --uid 1000 --gid 1000 --home-dir /usr/share/kibana --no-create-home kibana
+USER kibana
 
-### NodeJS version 10.22.1 is required for Kibana version 7.9.3.  Delete node distribution included with kibana and replace with manually installed version
-RUN set -x \
-  && if [ "${TARGETPLATFORM}" = "linux/arm/v7" ] ; then rm -rf /opt/kibana/node \
-  && curl -O https://nodejs.org/dist/${NODEJS_VERSION}/node-${NODEJS_VERSION}-linux-armv6l.tar.gz \
-  && tar -xvf node-${NODEJS_VERSION}-linux-armv6l.tar.gz \
-  && mv node-${NODEJS_VERSION}-linux-armv6l /opt/kibana/node ; fi
+LABEL org.label-schema.schema-version="1.0" org.label-schema.vendor="Elastic" org.label-schema.name="kibana" org.label-schema.version=${kibana_version} org.label-schema.url="https://www.elastic.co/products/kibana" org.label-schema.vcs-url="https://github.com/elastic/kibana" org.label-schema.license="ASL 2.0" org.label-schema.usage="https://www.elastic.co/guide/en/kibana/index.html" org.label-schema.build-date="2020-04-11T05:35:13.592Z" license="ASL 2.0"
 
-  RUN set -x \
-  && if [ "${TARGETPLATFORM}" = "linux/arm64" ] ; then rm -rf /opt/kibana/node \
-  && curl -O https://nodejs.org/dist/${NODEJS_VERSION}/node-${NODEJS_VERSION}-linux-arm64.tar.gz \
-  && tar -xvf node-${NODEJS_VERSION}-linux-arm64.tar.gz \
-  && mv node-${NODEJS_VERSION}-linux-arm64 /opt/kibana/node ; fi
+ENTRYPOINT ["/usr/local/bin/dumb-init", "--"]
 
-
-#RUN set -x \
-#  && if [ "${TARGETPLATFORM}" = "linux/arm/v7" ] ; then git clone --branch v0.25.0 --depth 1 https://github.com/nodegit/nodegit.git \
-#  && cd /nodegit \
-#  && wget https://github.com/fg2it/phantomjs-on-raspberry/releases/download/v2.1.1-wheezy-jessie-armv6/phantomjs \
-#  && export PATH=$PATH:/nodegit:/opt/kibana/node/bin/ \
-#  && chmod -R 777 /nodegit ; fi
-  # && /opt/kibana/node/bin/npm install --unsafe-perm ; fi
-
-# RUN set -x \
-#   && if [ "${TARGETPLATFORM}" = "linux/arm/v7" ] ; then mv /opt/kibana/node_modules/@elastic/nodegit/build/Release /opt/kibana/node_modules/@elastic/nodegit/build/Release.old \
-#   && mv /opt/kibana/node_modules/@elastic/nodegit/dist/enums.js /opt/kibana/node_modules/@elastic/nodegit/dist/enums.js.old \
-#   && cp -rf /nodegit/build/Release /opt/kibana/node_modules/@elastic/nodegit/build \
-#   && cp /nodegit/dist/enums.js /opt/kibana/node_modules/@elastic/nodegit/dist ; fi
-
-#RUN set -x \
-#  && if [ "${TARGETPLATFORM}" = "linux/arm/v7" ] ; then cd /nodegit \ 
-#  && export PATH=$PATH:/nodegit:/opt/kibana/node/bin/ \  
-#  && /opt/kibana/node/bin/npm install ctags --unsafe-perm ; fi
-
-#RUN set -x \
-#  && if [ "${TARGETPLATFORM}" = "linux/arm/v7" ] ; then mv /opt/kibana/node_modules/@elastic/node-ctags/ctags/build/ctags-node-v64-linux-x64 /opt/kibana/node_modules/@elastic/node-ctags/ctags/build/ctags-node-v64-linux-arm \
-#  && mv /opt/kibana/node_modules/@elastic/node-ctags/ctags/build/ctags-node-v64-linux-arm/ctags.node /opt/kibana/node_modules/@elastic/node-ctags/ctags/build/ctags-node-v64-linux-arm/ctags.node.old \
-#  && cp /nodegit/node_modules/ctags/build/Release/ctags.node /opt/kibana/node_modules/@elastic/node-ctags/ctags/build/ctags-node-v64-linux-arm ; fi
-
-
-USER ${KIBANA_UID}
-
-# RUN cd /root && curl -O https://nodejs.org/dist/v10.15.2/node-v10.15.2-linux-armv6l.tar.gz && tar -xvf node-v10.15.2-linux-armv6l.tar.gz
-# ADD ./kibana.sh /opt/kibana/bin/kibana
-WORKDIR /opt/kibana
-RUN chmod a+x /opt/kibana/bin/kibana
-CMD ["/opt/kibana/bin/kibana"]
+CMD ["/usr/local/bin/kibana-docker"]
