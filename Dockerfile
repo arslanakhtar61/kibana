@@ -117,6 +117,6 @@ USER ${KIBANA_UID}
 # RUN cd /root && curl -O https://nodejs.org/dist/v10.15.2/node-v10.15.2-linux-armv6l.tar.gz && tar -xvf node-v10.15.2-linux-armv6l.tar.gz
 # ADD ./kibana.sh /opt/kibana/bin/kibana
 WORKDIR /usr/share/kibana
-#RUN chmod a+x /usr/share/kibana/bin/kibana
-RUN chmod g+s /usr/share/kibana/bin/kibana
+RUN chmod a+x /usr/share/kibana/bin/kibana
+#RUN chmod g+s /usr/share/kibana/bin/kibana
 CMD ["/usr/share/kibana/bin/kibana"]
