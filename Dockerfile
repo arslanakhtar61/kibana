@@ -4,7 +4,7 @@ ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
 ARG KIBANA_VERSION=7.9.3
-ARG NODEJS_VERSION=v10.23.0
+ARG NODEJS_VERSION=v10.22.1
 
 ###############################################################################
 #                                INSTALLATION
