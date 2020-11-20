@@ -86,6 +86,8 @@ RUN set -x \
   && tar -xvf node-${NODEJS_VERSION}-linux-arm64.tar.gz \
   && mv node-${NODEJS_VERSION}-linux-arm64 /usr/share/kibana/node ; fi
 
+#https://discuss.elastic.co/t/kibana-4-5-1-cannot-start-because-of-permission-denied/50392
+RUN chown -R kibana:kibana ${KIBANA_HOME}
 
 #RUN set -x \
 #  && if [ "${TARGETPLATFORM}" = "linux/arm/v7" ] ; then git clone --branch v0.25.0 --depth 1 https://github.com/nodegit/nodegit.git \
